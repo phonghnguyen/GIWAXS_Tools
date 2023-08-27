@@ -256,7 +256,7 @@ class GIWAXSDataProcessor:
     
         # Using LogNorm to handle NaN values
         cax = combined_qzqxy.plot(x='qxy', y='qz', cmap=cmap, ax=ax, add_colorbar=False, 
-                                  norm=LogNorm(np.nanpercentile(qzqxy, 80), np.nanpercentile(qzqxy, 99)))
+                                  norm=LogNorm(np.nanpercentile(qzqxy, 80), np.nanpercentile(qzqxy, 99.5)))
     
         # Add colorbar with custom label
         fig.colorbar(cax, ax=ax, label='Intensity (a.u.)', shrink=0.75)
