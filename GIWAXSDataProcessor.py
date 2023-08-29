@@ -261,6 +261,9 @@ class GIWAXSDataProcessor:
         # Using LogNorm to handle NaN values
         cax = combined_qzqxy.plot(x='qxy', y='qz', cmap=cmap, ax=ax, add_colorbar=False, 
                                   norm=LogNorm(np.nanpercentile(qzqxy, 80), np.nanpercentile(qzqxy, 99.5)))
+        
+        cmap = mpl.cm.viridis
+        cmap.set_bad((68/255, 1/255, 84/255), 1)
     
         # Add colorbar with custom label
         fig.colorbar(cax, ax=ax, label='Intensity (a.u.)', shrink=0.75)
@@ -288,6 +291,9 @@ class GIWAXSDataProcessor:
         fig (matplotlib.figure.Figure): The figure object.
         ax (matplotlib.axes._subplots.AxesSubplot): The axis object.
         """
+        cmap = mpl.cm.viridis
+        cmap.set_bad((68/255, 1/255, 84/255), 1)
+        
         fig, ax = plt.subplots(dpi=dpi)
     
         cax = chiq.plot(x='q', y='chi', cmap=cmap, ax=ax, add_colorbar=False, 
