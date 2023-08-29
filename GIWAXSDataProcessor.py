@@ -11,6 +11,7 @@ import xarray as xr
 import dask.array as da
 import skimage.transform
 from scipy.ndimage import label
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator
 from matplotlib.colors import LogNorm
@@ -211,6 +212,9 @@ class GIWAXSDataProcessor:
         fig (matplotlib.figure.Figure): The figure object.
         ax (matplotlib.axes._subplots.AxesSubplot): The axis object.
         """
+        cmap = mpl.cm.viridis
+        cmap.set_bad((68/255, 1/255, 84/255), 1)
+        
         fig, ax = plt.subplots(dpi=dpi)
     
         cax = qzqxy.plot(x='qxy', y='qz', cmap=cmap, ax=ax, add_colorbar=False, norm=LogNorm(np.nanpercentile(qzqxy, 80), np.nanpercentile(qzqxy, 99)))
