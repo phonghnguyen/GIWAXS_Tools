@@ -102,8 +102,13 @@ class CrystalIndexingAnalyzer:
         # Convert the angle from radians to degrees
         theta = np.degrees(theta)
     
-        return theta
+        # Apply logic to determine if the angle should be negative
+        negative_indices = [h1 < 0, k1 < 0, l1 < 0, h2 < 0, k2 < 0, l2 < 0]
+        if sum(negative_indices) % 2 != 0:  # If there's an odd number of negative indices
+            theta *= -1
     
+        return theta
+
     def calculate_interplanar_and_chi(self, spacing_table, h1, k1, l1, approx_chi=0):
         """
         Compute 'Interplanar Angle' and 'Chi' columns and add them to the spacing_table DataFrame.
@@ -114,18 +119,14 @@ class CrystalIndexingAnalyzer:
         spacing_table['Interplanar Angle'] = spacing_table.apply(
             lambda row: self.compute_interplanar_angle(h1, k1, l1, row['h'], row['k'], row['l']),
             axis=1
-        )
+        ).round(4)
         
         # Calculate 'Chi' values, adjusting them to be within the range -90 to 90 degrees
         def adjust_chi(angle):
             chi = approx_chi + angle
-            while chi > 90:
-                chi -= 180
-            while chi < -90:
-                chi += 180
             return chi
         
-        spacing_table['Chi'] = spacing_table['Interplanar Angle'].apply(adjust_chi)
+        spacing_table['Chi'] = spacing_table['Interplanar Angle'].apply(adjust_chi).round(4)
         
         return spacing_table
 
@@ -140,7 +141,7 @@ class CrystalIndexingAnalyzer:
     
         return filtered_table
         
-    def compute_q_coordinates(self,spacing_table):
+    def compute_q_coordinates(self, spacing_table):
         """
         Compute the qxy and qz coordinates and add them to the spacing_table DataFrame.
         """
@@ -152,7 +153,19 @@ class CrystalIndexingAnalyzer:
         spacing_table['qxy'] = qxy_values
         spacing_table['qz'] = qz_values
     
-        return spacing_table.drop_duplicates()
+        # Identify Miller indices with qxy = 0 and h, k, l > 0
+        zero_qxy_indices = spacing_table[(spacing_table['qxy'] == 0) & (spacing_table['h'] >= 0) & (spacing_table['k'] >= 0) & (spacing_table['l'] >= 0)][['h', 'k', 'l']]
+    
+        # Remove negative counterparts of Miller indices with qxy = 0
+        for _, row in zero_qxy_indices.iterrows():
+            h, k, l = row['h'], row['k'], row['l']
+            if h >= 0 and k >= 0 and l >= 0:
+                negative_counterpart = spacing_table[(spacing_table['h'] == -h) & (spacing_table['k'] == -k) & (spacing_table['l'] == -l)]
+                
+                if not negative_counterpart.empty:
+                    spacing_table.drop(negative_counterpart.index, inplace=True)
+        
+        return spacing_table.drop_duplicates().reset_index(drop=True)
 
 # Example usage:
 # analyzer = CrystalIndexingAnalyzer(space_group='cubic', a=1.0, b=1.0, c=1.0, alpha=90, beta=90, gamma=90)

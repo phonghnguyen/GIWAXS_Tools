@@ -10,28 +10,178 @@ import fabio
 import xarray as xr
 import dask.array as da
 import skimage.transform
+from skimage.transform import warp_polar
 from scipy.ndimage import label
+from scipy.interpolate import RegularGridInterpolator
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator
 from matplotlib.colors import LogNorm
 
 class GIWAXSDataProcessor:
-    def __init__(self, q_max):
+    def __init__(self):
         """
-        A data processor for GIWAXS images that have been mapped into q-space using WAXStool and exported from Igor.
-        
-        The input .tif files should be reduced from the detector .tif using WAXSTools and exported from Igor using
-        ImageSave or via Data > Save Waves > Save Image using a TIFF format with a 32-bit float/sample Sample Depth.
-        The resulting qzqxy image will include the beam centering and sample-to-detector distance corrections done in Igor,
-        as well as the missing-wedge correction done by WAXSTools, provided that the correct q_max used in WAXSTools
-        is specified upon initializing this class.
+        A data processor for GIWAXS images. The images should be provided as arrays. 
+        """
+    
+    def q_to_tif_mapping(self, q12, q3, wavelength, R, beta):
+        """
+        Map q-space coordinates to detector coordinates.
         
         Parameters:
-        q_max (float): The upper q-range value specified during the WAXStool image mapping.
-        """
-        self.q_max = q_max
+        q12 (numpy array): Reciprocal space coordinate in xy-plane
+        q3 (numpy array): Reciprocal space coordinate in z-plane
+        wavelength (float): Wavelength of the beam in angstroms
+        R (float): Distance to the detector in mm
+        beta (float): Incidence angle in radians
     
+        Returns:
+        px (numpy array): Detector coordinate in x
+        pz (numpy array): Detector coordinate in z
+        """
+        # Calculate s and s3 from q12 and q3
+        s = np.sqrt(q12**2 + q3**2) / (2 * np.pi)
+        s3 = q3 / (2 * np.pi)
+        
+        # Compute pz using equation (12)
+        p3 = (2 * wavelength * R * s / (2 - wavelength**2 * s**2)) * (s3 / s - (wavelength * s / 2) * np.sin(beta)) / np.cos(beta)
+        
+        # Compute px using equation (13)
+        term1 = 1 - (wavelength**2 * s**2) / 4
+        term2 = ((s3 / s - (wavelength * s / 2) * np.sin(beta)) / np.cos(beta))**2
+        
+        # Check for negative values under the square root
+        sqrt_term = term1 - term2
+        valid_sqrt = sqrt_term >= 0  # Boolean mask where the square root argument is non-negative
+        p12 = np.zeros_like(sqrt_term)  # Initialize px array
+    
+        # Compute px only where the square root term is valid
+        p12[valid_sqrt] = (2 * wavelength * R * s[valid_sqrt] / (2 - wavelength**2 * s[valid_sqrt]**2)) * np.sqrt(sqrt_term[valid_sqrt])
+        p12[~valid_sqrt] = np.nan  # Assign NaN where the term is negative
+    
+        return p12, p3
+    
+    def calculate_jacobian(self, q12, q3, wavelength, R):
+        """
+        Calculate the Jacobian for intensity correction.
+    
+        Parameters:
+        q12 (numpy array): Reciprocal space coordinate in xy-plane
+        q3 (numpy array): Reciprocal space coordinate in z-plane
+        wavelength (float): Wavelength of the beam in angstroms
+        R (float): Sample-to-detector-distance in mm
+    
+        Returns:
+        numpy array: Jacobian values for intensity correction
+        """
+        s = np.sqrt(q12**2 + q3**2) / (2 * np.pi)  # s = q / (2 * pi)
+        J_F = (wavelength**2 * R**2) / ((1 - (wavelength**2 * s**2) / 2)**3)
+        return J_F
+    
+    def img_to_qzqxy(self, det_image, bc_x, bc_y, R, incidence, px_size_x, px_size_y, q_range, q_res, xray_en):
+        """
+        Convert a detector image to q-space without flattening the meshgrid.
+    
+        Parameters:
+        det_image (2D array): Detector image
+        bc_x, bc_y (floats): Beam center coordinates in pixels
+        R (float): Sample-to-detector-distance in mm
+        incidence (float): Grazing incidence angle
+        px_size_x, px_size_y (floats): pixel sizes in mm in the x and y direction
+        q_range, q_res (floats): Parameters defining the q-space grid resolution
+        xray_en (float): Incident photon beam energy in keV
+    
+        Returns:
+        2D array: Corrected image in q-space
+        """
+        wavelength = 12.398424437 / xray_en  # Wavelength of the beam in angstrom
+        incidence = np.radians(incidence)  # Convert incidence angle to radians
+    
+        # Adjust beam center to mm
+        bc_x *= px_size_x
+        bc_y = (det_image.shape[1] - bc_y) * px_size_y
+    
+        # Define the detector coordinate grids
+        x = np.linspace(-bc_x, (det_image.shape[0] * px_size_x - bc_x), det_image.shape[0])
+        y = np.linspace(-bc_y, (det_image.shape[1] * px_size_y - bc_y), det_image.shape[1])
+    
+        # Define the q-space grid
+        qxy_points = 2 * round(q_range / q_res)
+        qz_points = round(q_range / q_res)
+        qxy = np.linspace(-q_range, q_range, qxy_points)
+        qz = np.linspace(0, q_range, qz_points)
+        Qxy, Qz = np.meshgrid(qxy, qz)
+    
+        # Calculate detector coordinates from q-space coordinates
+        px, pz = self.q_to_tif_mapping(Qxy, Qz, wavelength, R, incidence)
+    
+        # Create an interpolator and interpolate using the original meshgrid
+        interpolator = RegularGridInterpolator((y, x), det_image, bounds_error=False, fill_value=0)
+        detector_coords = np.stack([pz, px], axis=-1)
+        q_image = interpolator(detector_coords)
+    
+        # Calculate and apply the Jacobian for intensity correction
+        jacobian = self.calculate_jacobian(Qxy, Qz, wavelength, R)
+        q_image *= jacobian
+        
+        qzqxy = xr.DataArray(q_image, dims=("qz", "qxy"), coords={"qxy":qxy, "qz":qz})
+    
+        return qzqxy
+    
+    def cake_and_corr(self, qzqxy):
+        """
+        This method processes qzqxy xarray to perform various steps such as image masking,
+        grid creation, polar transformation, and sin(chi) correction.
+    
+        Parameters:
+        raw (xr.DataArray): The raw GIWAXS data.
+    
+        Returns:
+        chiq (xr.DataArray): A processed DataArray without sin(chi) correction applied.
+        corrected_chiq (xr.DataArray): A processed DataArray with sin(chi) correction applied.
+        """
+        data = qzqxy.values
+        qz = qzqxy.qz
+        qxy = qzqxy.qxy
+        
+        # Calculate q from qz and qxy, finding maximum radius
+        q = np.sqrt(qz**2 + qxy**2)
+        
+        # Create a meshgrid from qz and qxy
+        Qz, Qxy = np.meshgrid(qz, qxy, indexing='ij')
+        
+        # Calculate q from the meshgrid of qz and qxy
+        q = np.sqrt(Qz**2 + Qxy**2)
+        
+        # Determine the center from coordinates where qz and qxy are zeros
+        center_x = float(xr.DataArray(np.linspace(0,len(qzqxy.qxy)-1,len(qzqxy.qxy)))
+                    .assign_coords({'dim_0':qzqxy.qxy.values})
+                    .rename({'dim_0':'qxy'})
+                    .interp(qxy=0)
+                    .data)
+        center_y = float(xr.DataArray(np.linspace(0,len(qzqxy.qz)-1,len(qzqxy.qz)))
+                    .assign_coords({'dim_0':qzqxy.qz.values})
+                    .rename({'dim_0':'qz'})
+                    .interp(qz=0)
+                    .data)  
+        center = (center_y, center_x)
+        
+        # Apply the polar transformation
+        TwoD = warp_polar(data, output_shape=(360,1000), center=(center_y,center_x), radius = np.sqrt((data.shape[1] - center_x)**2 + (data.shape[0] - center_y)**2))
+        TwoD = np.roll(TwoD, TwoD.shape[0]//4, axis=0)
+        
+        chi = np.linspace(-180,180,360)
+        q = np.linspace(0,np.amax(q), 1000)
+        
+        # Create xarray with proper dimensions and coordinates
+        chiq = xr.DataArray(TwoD, dims=("chi", "q"), coords={"chi": chi, "q": q})
+
+        # Apply the sin(chi) correction
+        corrected_chiq = self.sin_chi_correction(chiq)
+    
+        # Return both the raw and corrected DataArrays along with the non-corrected chiq
+        return chiq, corrected_chiq
+
     def automask(self, image, max_region_size=50, threshold_value=0.25):
         """
         This function generates an automatic mask for an input image. This mask is primarily used to hide regions 
@@ -123,79 +273,10 @@ class GIWAXSDataProcessor:
                     corrected_chiq.loc[dict(chi=chi_val)] = np.nan  # Or any other value you want to assign when sin_chi is zero
     
             return corrected_chiq
-    
+        
         except Exception as e:
             print(f"An error occurred: {e}")
-            return None    
-    
-    def process_giwaxs_file(self, file):
-        """
-        This method processes a GIWAXS file to perform various steps such as image masking,
-        grid creation, polar transformation, and sin(chi) correction.
-    
-        Parameters:
-        file (str): The path to the GIWAXS file to be processed.
-    
-        Returns:
-        raw (xr.DataArray): The raw GIWAXS data.
-        chiq (xr.DataArray): A processed DataArray without sin(chi) correction applied.
-        corrected_chiq (xr.DataArray): A processed DataArray with sin(chi) correction applied.
-        """
-        try:
-            # Validate input types
-            if not isinstance(file, str):
-                raise ValueError("Input file must be a string representing the file path.")
-            if not isinstance(self.q_max, (int, float)):
-                raise ValueError("q_max must be an integer or float.")
-            
-            # Load and process the image
-            image = np.fliplr(np.flipud(np.rot90(fabio.open(file).data)))
-            masked_image, mask = self.automask(image, threshold_value=2)
-    
-            # Create qxy and qz grids
-            NumX, NumY = masked_image.shape
-            qxy_new = np.linspace(-self.q_max, self.q_max, num=NumX)
-            qz_new = np.linspace(0, self.q_max, num=NumY)
-        
-            # Stack the image data into a DataArray
-            data = da.stack([masked_image],axis=2)
-            raw = xr.DataArray(data, dims=("qxy", "qz", "energy"), coords={"qz":qz_new, "qxy":qxy_new}).rename(file[:-len('.tif')])
-        
-            # Calculate the center of the image
-            center_x = float(xr.DataArray(np.linspace(0,len(raw.qxy)-1,len(raw.qxy)))
-                        .assign_coords({'dim_0':raw.qxy.values})
-                        .rename({'dim_0':'qxy'})
-                        .interp(qxy=0)
-                        .data)
-            center_y = float(xr.DataArray(np.linspace(0,len(raw.qz)-1,len(raw.qz)))
-                        .assign_coords({'dim_0':raw.qz.values})
-                        .rename({'dim_0':'qz'})
-                        .interp(qz=0)
-                        .data)  
-        
-            # Apply the polar transformation
-            TwoD = skimage.transform.warp_polar(raw.squeeze(), center=(center_x,center_y), radius = np.sqrt((raw.shape[0] - center_x)**2 + (raw.shape[1] - center_y)**2))
-            TwoD = np.roll(TwoD, TwoD.shape[0]//2, axis=0)
-        
-            # Create the q and chi grids
-            qxy = raw.qxy
-            qz = raw.qz
-            q = np.sqrt(qz**2+qxy**2)
-            q = np.linspace(0,np.amax(q), TwoD.shape[1])
-            chi = np.linspace(-179.5,179.5,360)
-        
-            # Create the chiq DataArray
-            chiq = xr.DataArray(TwoD,dims=['chi','q'],coords={'q':q,'chi':chi},attrs=raw.attrs)
-    
-            # Apply the sin(chi) correction
-            corrected_chiq = self.sin_chi_correction(chiq)
-        
-            # Return both the raw and corrected DataArrays along with the non-corrected chiq
-            return raw, chiq, corrected_chiq
-    
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            return None, None, None  # Return a tuple with three None values to indicate the failure
+            return None 
         
     def plot_qzqxy(self, qzqxy, qxy_limits=(-2, 2), qz_limits=(0, 2), cmap='viridis', dpi=150):
         """
@@ -228,8 +309,8 @@ class GIWAXSDataProcessor:
         ax.yaxis.set_minor_locator(AutoMinorLocator(1))
     
         # Add axis labels
-        ax.set_xlabel('$\it{q_{xy}}$ (Å$^{-1}$)')
-        ax.set_ylabel('$\it{q_{z}}$ (Å$^{-1}$)')
+        ax.set_xlabel(r'$\it{q}_{xy}$ (Å$^{-1}$)')
+        ax.set_ylabel(r'$\it{q}_{z}$ (Å$^{-1}$)')
         ax.xaxis.set_tick_params(which='both', size=5, width=2, direction='out')
         ax.yaxis.set_tick_params(which='both', size=5, width=2, direction='out')
     
@@ -268,9 +349,9 @@ class GIWAXSDataProcessor:
         # Add colorbar with custom label
         fig.colorbar(cax, ax=ax, label='Intensity (a.u.)', shrink=0.75)
     
-        ax.set_xlabel('$\it{q_{xy}}$ (Å$^{-1}$)')
-        ax.set_ylabel('$\it{q_{z}}$ (Å$^{-1}$)')
-    
+        ax.set_xlabel(r'$\it{q}_{xy}$ (Å$^{-1}$)')
+        ax.set_ylabel(r'$\it{q}_{z}$ (Å$^{-1}$)')
+
         ax.set_aspect('equal')
         ax.set_xlim(*qxy_limits)
         ax.set_ylim(*qz_limits)
@@ -319,7 +400,3 @@ class GIWAXSDataProcessor:
         # plt.show()
         
         return fig, ax
-
-# Example usage:
-# processor = GIWAXSDataProcessor(q_max=4.0)
-# corrected_data = processor.process_giwaxs_file("some_file.tif")

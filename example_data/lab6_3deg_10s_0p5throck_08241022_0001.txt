@@ -1,0 +1,11 @@
+# General info
+User: b_tassone, time: Thu Aug 24 10:22:18 2023
+
+# Temperature
+C
+
+# Counters
+sec=10, mon=11.7232, bs=0.03443, pd=0.07926, i0=2.64293, mpf_top=18.9047, mpf_bot=0, mpf_eff=0.01311, ccd1=0, marccd=-1, Counter 20=0, Counter 21=0, Counter 22=0, Counter 23=0, Counter 24=0, Counter 25=0, Counter 26=0, Counter 27=0, Counter 28=0, Counter 29=0, Counter 30=0, Counter 31=0, Counter 32=0, Counter 33=0, Counter 34=0, Counter 35=0
+
+# Motors
+empty00=0, monbend=184, monslit=5.59817, monang=33, m0pitch=-0.0510739, m0vert=3.15903, m0bend=4.94, empty07=0, tablev1=3.0226e-07, tablev2=-1.48628e-07, tyaw=0, thor=-2.54829, i0v=0, i0h=3.17611e-07, th=2.4525, phi=0, detx=-2.9, dety=13.7486, detz=299.995, platz=0, samz=2, gony=0, samx=2.99915, samy=-1.43557, b0v=0.173, t0v=0.127, r0h=0.5, l0h=0.5, v1gap=0.14986, v1tran=-0.120142, h1gap=0.149861, h1tran=-1.35027, v2gap=0.199784, v2tran=0.457963, h2gap=0.399797, h2tran=0.119889, phy=3.48764e-06, phx=-7.1689e-08, gth=0, gchi=0, gz=0.2, bsy=-0.0777243, bsx=-0.789432, bsz=-3.00076, spare1=0, spare2=0, spare3=0, spare4=0, trx=20.642, try=-45.0732, table=0, tablep=0, h0gap=1, h0tran=0, v0gap=0.3, v0tran=-0.023, kmotV=0, kmotI=0, tempset=-1
