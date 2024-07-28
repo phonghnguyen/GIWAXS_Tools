@@ -1,9 +1,21 @@
-# GIWAXS_Tools
+# GIWAXS Tools
 
-This code is intended to facilitate the analysis of grazing incidence X-ray scattering detector images. It assumes that X-ray scattering detector images can be imported into Python as an image array. The user should know the grazing incidence angle and X-ray energy beforehand. Values for sample-to-detector distance and beam center can be calibrated using Nika's Beam center and Geometry cor. modules. The code uses xarray data arrays.  The mapping is based on Stribeck, N.; Nöchel, U. Direct Mapping of Fiber Diffraction Patterns into Reciprocal Space. J Appl Cryst 2009, 42 (2), 295–301. https://doi.org/10.1107/S0021889809004713. Jacobian correction of intensity for the remapping process is also done by default. Corrections for absorbance and polarization have not been implemented. 
+**GIWAXS Tools** is a Python library designed to facilitate the analysis of Grazing Incidence Wide-Angle X-ray Scattering (GIWAXS) data. It provides methods for mapping X-ray scattering detector images into q-space and polar coordinate representations, as well as tools to assist in peak indexing.
 
-Methods in GIWAXSDataProcessor can be used to map the detector image to q-space (generate qz-qxy plots), cake (generate chi-q plots), and apply sin(chi) correction for more quantitative analysis of angle-resolved populations. 
+## Features
 
-Methods in CrystalIndexingAnalyzer can be used for rudimentary analysis and indexing of different crystal structures and space groups. 
+- **Image to Q-Space Mapping**: Convert detector images into q-space (qz-qxy plots) using established mathematical transformations based on the work of Stribeck and Nöchel (2009) (DOI 10.1107/S0021889809004713). Jacobian correction of intensity for the remapping process is applied by default to account for geometric distortions in the transformation. The equations are directly translatable from the reference and users are encouraged to assess the correctness and applicability of these methods. 
+- **Polar Coordinate Transformation (Caking)**: Transform q-space data into polar coordinates (chi-q plots) for enhanced analysis of angular distributions.
+- **Crystal Structure Analysis**: Rudimentary tools for analyzing and indexing various crystal structures and space groups.
+- **Sin(χ) Correction**: Correct for the geometric projection effect in polar coordinate transformation to facilitate more quantitative analysis of angle-resolved populations (i.e., pole figures).
 
-An example Jupyter notebook is included to demonstrate use of both GIWAXSDataProcessor and CrystalIndexingAnalyzer.
+**Note**: Corrections for absorbance and polarization effects are not currently implemented.
+
+## Prerequisites
+
+Analysis of data requires knowing:
+- The grazing incidence angle.
+- The X-ray energy.
+- Sample-to-detector distance and beam center, which can be calibrated using tools such as Nika's Beam Center and Geometry Correction modules.
+
+The code utilizes `xarray` for data handling.
