@@ -12,6 +12,18 @@ import pandas as pd
 
 class CrystalIndexingAnalyzer:
     def __init__(self, space_group, a, b, c, alpha, beta, gamma):
+        """
+        Initializes an analyzer for indexing crystal structures using specified lattice parameters.
+        
+        Parameters:
+        space_group (str): The crystallographic space group.
+        a (float): Lattice constant a in Ångströms.
+        b (float): Lattice constant b in Ångströms.
+        c (float): Lattice constant c in Ångströms.
+        alpha (float): Alpha lattice angle in degrees.
+        beta (float): Beta lattice angle in degrees.
+        gamma (float): Gamma lattice angle in degrees.
+        """
         self.space_group = space_group.lower()
         self.a = a
         self.b = b
@@ -22,9 +34,14 @@ class CrystalIndexingAnalyzer:
 
     def compute_spacing(self, custom_miller_indices, max_miller_index):
         """
-        Compute the d-spacings and corresponding q-values for all possible
-        Miller indices up to a specified maximum, for a given crystal lattice type and
-        lattice parameters.
+        Computes the d-spacings and corresponding q-values for all possible Miller indices up to a specified maximum.
+
+        Parameters:
+        custom_miller_indices (list of tuples): Custom list of Miller indices to include.
+        max_miller_index (int): The maximum Miller index to consider.
+
+        Returns:
+        DataFrame: A pandas DataFrame containing Miller indices with their respective real-space (d) and reciprocal-space (q) values.
         """
         if len(custom_miller_indices) == 0:
             indices = list(product(range(0, max_miller_index + 1), repeat=3))
@@ -64,8 +81,15 @@ class CrystalIndexingAnalyzer:
     
     def compute_d_spacing(self, h, k, l):
         """
-        Compute the d-spacing for a set of Miller indices (h, k, l), given
-        the type of crystal lattice and lattice parameters.
+        Calculates the d-spacing based on Miller indices and crystal lattice type.
+
+        Parameters:
+        h (int): Miller index h.
+        k (int): Miller index k.
+        l (int): Miller index l.
+
+        Returns:
+        float: The calculated d-spacing in Ångströms.
         """
         space_group = self.space_group.lower()
     
@@ -89,6 +113,16 @@ class CrystalIndexingAnalyzer:
         return d
     
     def compute_interplanar_angle(self, h1, k1, l1, h2, k2, l2):
+        """
+        Calculates the angle between two planes defined by their Miller indices.
+        
+        Parameters:
+        h1, k1, l1 (int): Miller indices of the first plane.
+        h2, k2, l2 (int): Miller indices of the second plane.
+        
+        Returns:
+        float: The angle in degrees between the two planes.
+        """
         # Calculate d-spacing for each set of Miller indices
         d_hkl = self.compute_d_spacing(h1, k1, l1)
         d_hkl_prime = self.compute_d_spacing(h2, k2, l2)
@@ -111,9 +145,15 @@ class CrystalIndexingAnalyzer:
 
     def calculate_interplanar_and_chi(self, spacing_table, h1, k1, l1, approx_chi=0):
         """
-        Compute 'Interplanar Angle' and 'Chi' columns and add them to the spacing_table DataFrame.
-        This method adjusts the 'Chi' values to be within the range -90 to 90 degrees by adding multiples
-        of 360 degrees if needed.
+        Computes interplanar angles and adjusts chi values for given Miller indices, adding these to the provided DataFrame.
+
+        Parameters:
+        spacing_table (DataFrame): DataFrame containing d-spacing and q-values.
+        h1, k1, l1 (int): Reference Miller indices for interplanar angle calculations.
+        approx_chi (float): Initial chi value for adjustments.
+
+        Returns:
+        DataFrame: The updated DataFrame with 'Interplanar Angle' and 'Chi' columns.
         """
         # Compute the interplanar angles
         spacing_table['Interplanar Angle'] = spacing_table.apply(
@@ -129,21 +169,16 @@ class CrystalIndexingAnalyzer:
         spacing_table['Chi'] = spacing_table['Interplanar Angle'].apply(adjust_chi).round(4)
         
         return spacing_table
-
-    def filter_spacing_table(self, spacing_table):
-        """
-        Filter the spacing table based on the restrictions in the Pbca space group.
-        """
-        filtered_table = spacing_table[
-            ((spacing_table['k'] + spacing_table['l']) % 2 == 0) &  # h + l = 2n condition
-            (spacing_table['l'] % 2 == 0)  # k = 2n condition
-        ].reset_index(drop=True)
-    
-        return filtered_table
         
     def compute_q_coordinates(self, spacing_table):
         """
-        Compute the qxy and qz coordinates and add them to the spacing_table DataFrame.
+        Computes q-space coordinates (qxy and qz) and adds these to the provided DataFrame based on the calculated chi values.
+
+        Parameters:
+        spacing_table (DataFrame): DataFrame containing Miller indices, chi, and d-spacing.
+
+        Returns:
+        DataFrame: The updated DataFrame with qxy and qz coordinates added.
         """
         # Compute qxy and qz values
         qxy_values = spacing_table['QSpace_AngstromInverse'] * np.sin(np.radians(spacing_table['Chi']))
@@ -166,8 +201,3 @@ class CrystalIndexingAnalyzer:
                     spacing_table.drop(negative_counterpart.index, inplace=True)
         
         return spacing_table.drop_duplicates().reset_index(drop=True)
-
-# Example usage:
-# analyzer = CrystalIndexingAnalyzer(space_group='cubic', a=1.0, b=1.0, c=1.0, alpha=90, beta=90, gamma=90)
-# spacing_table = analyzer.compute_spacing([], 4)
-# ...
