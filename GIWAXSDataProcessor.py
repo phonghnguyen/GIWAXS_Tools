@@ -13,6 +13,7 @@ import skimage.transform
 from skimage.transform import warp_polar
 from scipy.ndimage import label
 from scipy.interpolate import RegularGridInterpolator
+from scipy.constants import physical_constants, c
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator
@@ -21,23 +22,22 @@ from matplotlib.colors import LogNorm
 class GIWAXSDataProcessor:
     def __init__(self):
         """
-        A data processor for GIWAXS images. The images should be provided as arrays. 
+        Initializes a data processor for Grazing-Incidence Wide-Angle X-ray Scattering (GIWAXS) images.
         """
     
-    def q_to_tif_mapping(self, q12, q3, wavelength, R, beta):
+    def q_to_image_mapping(self, q12, q3, wavelength, R, beta):
         """
-        Map q-space coordinates to detector coordinates.
-        
+        Maps q-space coordinates to detector coordinates using given parameters.
+
         Parameters:
-        q12 (numpy array): Reciprocal space coordinate in xy-plane
-        q3 (numpy array): Reciprocal space coordinate in z-plane
-        wavelength (float): Wavelength of the beam in angstroms
-        R (float): Distance to the detector in mm
-        beta (float): Incidence angle in radians
-    
+        q12 (numpy array): Reciprocal space coordinates in the xy-plane.
+        q3 (numpy array): Reciprocal space coordinates in the z-direction.
+        wavelength (float): Wavelength of the X-ray beam in angstroms.
+        R (float): Distance from the sample to the detector in millimeters.
+        beta (float): Incidence angle in radians.
+
         Returns:
-        px (numpy array): Detector coordinate in x
-        pz (numpy array): Detector coordinate in z
+        tuple: A tuple containing arrays for the detector coordinates (px, pz).
         """
         # Calculate s and s3 from q12 and q3
         s = np.sqrt(q12**2 + q3**2) / (2 * np.pi)
@@ -63,16 +63,16 @@ class GIWAXSDataProcessor:
     
     def calculate_jacobian(self, q12, q3, wavelength, R):
         """
-        Calculate the Jacobian for intensity correction.
-    
+        Calculates the Jacobian determinant for intensity correction in GIWAXS measurements.
+
         Parameters:
-        q12 (numpy array): Reciprocal space coordinate in xy-plane
-        q3 (numpy array): Reciprocal space coordinate in z-plane
-        wavelength (float): Wavelength of the beam in angstroms
-        R (float): Sample-to-detector-distance in mm
-    
+        q12 (numpy array): Reciprocal space coordinate in the xy-plane.
+        q3 (numpy array): Reciprocal space coordinate in the z-direction.
+        wavelength (float): Wavelength of the X-ray beam in angstroms.
+        R (float): Sample-to-detector distance in millimeters.
+
         Returns:
-        numpy array: Jacobian values for intensity correction
+        numpy array: Jacobian values for intensity correction across the q-space.
         """
         s = np.sqrt(q12**2 + q3**2) / (2 * np.pi)  # s = q / (2 * pi)
         J_F = (wavelength**2 * R**2) / ((1 - (wavelength**2 * s**2) / 2)**3)
@@ -80,21 +80,22 @@ class GIWAXSDataProcessor:
     
     def img_to_qzqxy(self, det_image, bc_x, bc_y, R, incidence, px_size_x, px_size_y, q_range, q_res, xray_en):
         """
-        Convert a detector image to q-space without flattening the meshgrid.
-    
+        Converts a detector image into q-space coordinates using given parameters.
+
         Parameters:
-        det_image (2D array): Detector image
-        bc_x, bc_y (floats): Beam center coordinates in pixels
-        R (float): Sample-to-detector-distance in mm
-        incidence (float): Grazing incidence angle
-        px_size_x, px_size_y (floats): pixel sizes in mm in the x and y direction
-        q_range, q_res (floats): Parameters defining the q-space grid resolution
-        xray_en (float): Incident photon beam energy in keV
-    
+        det_image (2D array): The detector image as a 2D array.
+        bc_x, bc_y (floats): Beam center coordinates in the detector image, given in pixels.
+        R (float): Sample-to-detector distance in millimeters.
+        incidence (float): Grazing incidence angle in degrees.
+        px_size_x, px_size_y (floats): Pixel sizes in the x and y directions in millimeters.
+        q_range, q_res (floats): The range and resolution of the q-space grid, respectively.
+        xray_en (float): Incident photon beam energy in keV.
+
         Returns:
-        2D array: Corrected image in q-space
+        xr.DataArray: Corrected image in q-space, represented as an xarray DataArray.
         """
-        wavelength = 12.398424437 / xray_en  # Wavelength of the beam in angstrom
+        
+        wavelength = physical_constants['Planck constant in eV s'][0] * c * 1e7 / xray_en  # Wavelength of the beam in angstrom
         incidence = np.radians(incidence)  # Convert incidence angle to radians
     
         # Adjust beam center to mm
@@ -113,7 +114,7 @@ class GIWAXSDataProcessor:
         Qxy, Qz = np.meshgrid(qxy, qz)
     
         # Calculate detector coordinates from q-space coordinates
-        px, pz = self.q_to_tif_mapping(Qxy, Qz, wavelength, R, incidence)
+        px, pz = self.q_to_image_mapping(Qxy, Qz, wavelength, R, incidence)
     
         # Create an interpolator and interpolate using the original meshgrid
         interpolator = RegularGridInterpolator((y, x), det_image, bounds_error=False, fill_value=0)
@@ -130,15 +131,13 @@ class GIWAXSDataProcessor:
     
     def cake_and_corr(self, qzqxy):
         """
-        This method processes qzqxy xarray to perform various steps such as image masking,
-        grid creation, polar transformation, and sin(chi) correction.
-    
+        Applies polar transformation and sin(chi) correction to GIWAXS data represented in q-space.
+
         Parameters:
-        raw (xr.DataArray): The raw GIWAXS data.
-    
+        qzqxy (xr.DataArray): GIWAXS data in q-space.
+
         Returns:
-        chiq (xr.DataArray): A processed DataArray without sin(chi) correction applied.
-        corrected_chiq (xr.DataArray): A processed DataArray with sin(chi) correction applied.
+        tuple: A tuple of DataArrays containing the raw and corrected polar transformation data.
         """
         data = qzqxy.values
         qz = qzqxy.qz
@@ -184,26 +183,15 @@ class GIWAXSDataProcessor:
 
     def automask(self, image, max_region_size=50, threshold_value=0.25):
         """
-        This function generates an automatic mask for an input image. This mask is primarily used to hide regions 
-        from the image that have a low-intensity value (less than or equal to a threshold value) and are larger 
-        than a defined maximum size. The latter is particularly useful when you want to ignore non-contributing 
-        regions in the image, such as the edges of a detector or structural components that are not X-ray sensitive.
-    
-        Default values for max_region_size and threshold_value are optimized for the Pilatus 1M and Pilatus 900k 
-        detectors at NSLS-II SMI.
-    
+        Automatically generates a mask for the input image to hide low-intensity and large irrelevant regions.
+
         Parameters:
-        image (np.array): The input image provided as a NumPy array.
-        max_region_size (int, optional): Defines the maximum size a region can be to remain unmasked. If a region 
-                                         is larger than this value, it will be masked out. Default is 50.
-        threshold_value (float, optional): A critical intensity value used to create the initial binary mask. Any 
-                                           pixel with intensity less than or equal to this value will be marked for 
-                                           potential masking. Default is 0.25.
-    
+        image (np.array): The input image array.
+        max_region_size (int): The maximum size of unmasked regions in pixels.
+        threshold_value (float): Intensity threshold for determining low-intensity regions.
+
         Returns:
-        tuple: A tuple containing the masked image (np.array) and the binary mask (np.array). In the masked image, 
-               the intensity of masked regions is replaced with NaN. In the binary mask, True values correspond to 
-               the masked regions.
+        tuple: A tuple containing the masked image array and the binary mask array.
         """
         try:
             # Check if the image is a NumPy array
@@ -244,15 +232,14 @@ class GIWAXSDataProcessor:
     
     def sin_chi_correction(self, chiq, epsilon=1e-7):
         """
-        This method performs a sin(chi) correction on a given DataArray. The correction is applied to each slice of data
-        corresponding to a specific value of chi (the angle). The correction involves multiplying each slice by sin(chi).
-    
+        Applies a sin(chi) correction to GIWAXS data, useful for normalizing intensity variations across angles.
+
         Parameters:
-        chiq (xr.DataArray): The input DataArray containing chi and q coordinates.
-        epsilon (float, optional): A small threshold value to check if chi is close to zero. Default is 1e-7.
-    
+        chiq (xr.DataArray): Input GIWAXS data in chi-q space.
+        epsilon (float): Small threshold value used to avoid division by zero near chi=0.
+
         Returns:
-        xr.DataArray: A new DataArray with the sin(chi) correction applied.
+        xr.DataArray: Corrected GIWAXS data after sin(chi) normalization.
         """
         try:
             # Validate input type
@@ -278,23 +265,21 @@ class GIWAXSDataProcessor:
             print(f"An error occurred: {e}")
             return None 
         
-    def plot_qzqxy(self, qzqxy, qxy_limits=(-2, 2), qz_limits=(0, 2), cmap='viridis', dpi=150):
+    def plot_qzqxy(self, qzqxy, qxy_limits=(-2, 2), qz_limits=(0, 2), cmap='viridis', dpi=100):
         """
-        Plot the raw GIWAXS data.
-    
+        Plots GIWAXS data from qzqxy coordinates with specified visual parameters.
+
         Parameters:
-        qzqxy (xr.DataArray): The raw data to be plotted.
-        qxy_limits (tuple): The lower and upper limits for the qxy axis.
-        qz_limits (tuple): The lower and upper limits for the qz axis.
-        cmap (str): The colormap to use for the plot.
-        dpi (int): The DPI for the plot.
-    
+        qzqxy (xr.DataArray): GIWAXS data to be plotted.
+        qxy_limits (tuple): x-axis limits for plotting.
+        qz_limits (tuple): y-axis limits for plotting.
+        cmap (str): Colormap for the plot.
+        dpi (int): Dots per inch resolution of the plot.
+
         Returns:
-        fig (matplotlib.figure.Figure): The figure object.
-        ax (matplotlib.axes._subplots.AxesSubplot): The axis object.
+        tuple: A tuple containing the matplotlib figure and axis objects.
         """
-        cmap = mpl.cm.viridis
-        cmap.set_bad((68/255, 1/255, 84/255), 1)
+        plt.rcParams['axes.linewidth'] = 2
         
         fig, ax = plt.subplots(dpi=dpi)
     
@@ -320,13 +305,23 @@ class GIWAXSDataProcessor:
         # Set axis limits
         ax.set_xlim(*qxy_limits)
         ax.set_ylim(*qz_limits)
-    
-        # Show the plot
-        # plt.show()
         
         return fig, ax
     
-    def plot_qzqxy_sq(self, qzqxy, qxy_limits=(0, 2), qz_limits=(0, 2), cmap='viridis', dpi=150):
+    def plot_qzqxy_sq(self, qzqxy, qxy_limits=(0, 2), qz_limits=(0, 2), cmap='viridis', dpi=100):
+        """
+        Plots the symmetrically summed quarter of GIWAXS data, focusing on the positive qxy and qz quadrants.
+        
+        Parameters:
+        qzqxy (xr.DataArray): GIWAXS data to be plotted.
+        qxy_limits (tuple): Limits for the qxy axis.
+        qz_limits (tuple): Limits for the qz axis.
+        cmap (str): Colormap to use for the plot.
+        dpi (int): Dots per inch resolution of the plot.
+        
+        Returns:
+        tuple: A tuple containing the matplotlib figure and axis objects.
+        """
         # Select only the negative qxy values and flip them to the positive side
         mirrored_qzqxy = qzqxy.sel(qxy=slice(None, 0))
         mirrored_qzqxy['qxy'] = -mirrored_qzqxy['qxy']
@@ -337,15 +332,14 @@ class GIWAXSDataProcessor:
         # Sum the truncated and mirrored data
         combined_qzqxy = truncated_qzqxy + mirrored_qzqxy.reindex_like(truncated_qzqxy, method='nearest', tolerance=1e-5).fillna(0)
         
+        plt.rcParams['axes.linewidth'] = 2
+
         fig, ax = plt.subplots(dpi=dpi)
     
         # Using LogNorm to handle NaN values
         cax = combined_qzqxy.plot(x='qxy', y='qz', cmap=cmap, ax=ax, add_colorbar=False, 
                                   norm=LogNorm(np.nanpercentile(qzqxy, 80), np.nanpercentile(qzqxy, 99.5)))
         
-        cmap = mpl.cm.viridis
-        cmap.set_bad((68/255, 1/255, 84/255), 1)
-    
         # Add colorbar with custom label
         fig.colorbar(cax, ax=ax, label='Intensity (a.u.)', shrink=0.75)
     
@@ -358,23 +352,20 @@ class GIWAXSDataProcessor:
     
         return fig, ax
         
-    def plot_chiq(self, chiq, cmap='viridis', q_limits=None, dpi=200):
+    def plot_chiq(self, chiq, cmap='viridis', dpi=100):
         """
         Plot the corrected chiq data.
     
         Parameters:
         chiq (xr.DataArray): The chiq data to be plotted.
         cmap (str): The colormap to use for the plot.
-        q_limits (tuple): The x-values where vertical dashed lines should be plotted. If None, no lines are plotted.
-        dpi (int): The DPI for the plot.
+        dpi (int): Dots per inch resolution of the plot.
     
         Returns:
-        fig (matplotlib.figure.Figure): The figure object.
-        ax (matplotlib.axes._subplots.AxesSubplot): The axis object.
+        tuple: A tuple containing the matplotlib figure and axis objects.
         """
-        cmap = mpl.cm.viridis
-        cmap.set_bad((68/255, 1/255, 84/255), 1)
-        
+        plt.rcParams['axes.linewidth'] = 2
+
         fig, ax = plt.subplots(dpi=dpi)
     
         cax = chiq.plot(x='q', y='chi', cmap=cmap, ax=ax, add_colorbar=False, 
@@ -390,13 +381,5 @@ class GIWAXSDataProcessor:
         ax.yaxis.set_tick_params(which='both', size=5, width=2, direction='in', right=True)
         ax.set_ylim([-90, 90])
     
-        # Add vertical dashed lines if q_limits is specified
-        if q_limits is not None:
-            q_lower, q_upper = q_limits
-            ax.vlines(x=q_lower, ymin=-90, ymax=90, colors='w', linestyles='dashed')
-            ax.vlines(x=q_upper, ymin=-90, ymax=90, colors='w', linestyles='dashed')
-    
-        # Show the plot
-        # plt.show()
         
         return fig, ax
