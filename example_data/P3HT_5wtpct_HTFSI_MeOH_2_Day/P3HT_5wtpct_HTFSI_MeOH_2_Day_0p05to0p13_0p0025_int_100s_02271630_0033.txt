@@ -1,0 +1,11 @@
+# General info
+User: b_chabinyc, time: Sun Feb 27 17:29:34 2022
+
+# Temperature
+159C
+
+# Counters
+sec=100, Monitor=1.96151e+07, bstop=2.10553e+06, I0=4.08169e+07, I1=0, ch5=0, ch6=0, ch7=0, ccd1=0, marccd=-1, pd1=0, pd2=0, pd3=0, pd4=0, pd5=0, pd6=0, pd7=0, pd8=0, pd9=0, pd10=0, pd11=0, pd12=0, pd13=0, pd14=0, pd15=0, pd16=0
+
+# Motors
+goniy=0, samplez=0, phi=-2.24719e-08, th=0.13, detx=22.75, dety=-26.2, detz=315, platz=1.8, b1v=-2.76503, t1v=3.425, l1h=4.7, r1h=-1.2, t2v=2.47875, l2h=-0.79, b2v=-2.42875, r2h=0.94, gshorz=-5.124, gsvert=6.093, stagey=44.1828, stagex=39.3526, bsvert=0.526, bshorz=-4.0525, samplex=-0.001524, sampley=0, bpm=2000, monbend=330, monslit=1.89179, monang=-119, m0pitch=4.24658, m0vert=1.3622, m0bend=19.469, m39=189.405, tablev1=34.1181, tablev2=54.2723, thor=1.09867, tableya=1.2001, t3v=-11.725, b3v=-17.41, l3h=-16.78, r3h=-4.55, h1gap=3.5, h1tran=-2.95, v1gap=0.66, v1tran=3.095, h2gap=0.15, h2tran=0.865, v2gap=0.05, v2tran=2.4538, table=44.1952, tablep=0.01167, kmotV=0, kmotI=0, tempset=-1
