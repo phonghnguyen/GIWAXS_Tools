@@ -368,11 +368,33 @@ class GIWAXSDataProcessor:
         fig.colorbar(cax, ax=ax, label='Intensity (a.u.)', shrink=1)
     
         # Add axis labels
-        ax.set_xlabel('$\it{q}$ (Å$^{-1}$)')
+        ax.set_xlabel('$q$ (Å$^{-1}$)')
         ax.set_ylabel('Azimuth, $\it{\chi}$')
         ax.xaxis.set_tick_params(which='both', size=5, width=2, direction='in', top=True)
         ax.yaxis.set_tick_params(which='both', size=5, width=2, direction='in', right=True)
         ax.set_ylim([-90, 90])
     
-        
         return fig, ax
+    
+    def calc_penetration_depth(self, xray_en, alpha_i, alpha_c, beta):
+        """
+        Calculates the penetration depth of grazing incidence X-rays (< 1 degree).
+        
+        Parameters:
+        xray_en (float): Incident photon beam energy in keV.
+        alpha_i (float or array): Grazing-incidence angle in degrees.
+        alpha_c (float): Critical angle in degrees.
+        beta (float): The material's absorbance at the given xray_en.
+
+        Returns:
+        penetration depth (float): Depth where X-ray intensity is attenuated to 1/e (~37%) of incident intensity with units of angstrom.
+        """
+        
+        wavelength = physical_constants['Planck constant in eV s'][0] * c * 1e7 / xray_en  # Wavelength of the beam in angstrom
+        alpha_i = np.radians(alpha_i) # Convert from degrees to radians
+        alpha_c = np.radians(alpha_c) # Convert from degrees to radians
+        
+        penetration_depth = wavelength * np.sqrt(2 / (np.sqrt(((alpha_i**2 - alpha_c**2))**2 + 4 * beta**2) - (alpha_i**2 - alpha_c**2))) / (4 * np.pi)        
+        
+        return penetration_depth
+        
