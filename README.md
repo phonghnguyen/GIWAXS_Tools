@@ -1,6 +1,6 @@
 # GIWAXS Tools
 
-**GIWAXS Tools** is a Python library designed to facilitate the analysis of Grazing Incidence Wide-Angle X-ray Scattering (GIWAXS) data. It provides methods for mapping X-ray scattering detector images into q-space and polar coordinate representations, as well as tools to assist in peak indexing.
+**GIWAXS Tools** is a Python library designed to facilitate the analysis of Grazing Incidence Wide-Angle X-ray Scattering (GIWAXS) data. It provides methods for mapping X-ray scattering detector images into q-space and polar coordinate representations, as well as tools to assist in peak indexing. This project was inspired by WAXSTools, developed in Igor by the Toney Group (DOI 10.1021/acs.chemmater.7b00067). 
 
 ## Features
 
