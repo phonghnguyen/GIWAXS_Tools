@@ -3,14 +3,16 @@ import fabio
 import xarray as xr
 import dask.array as da
 import skimage.transform
-from skimage.transform import warp_polar
-from scipy.ndimage import label
-from scipy.interpolate import RegularGridInterpolator
-from scipy.constants import physical_constants, c
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator
 from matplotlib.colors import LogNorm
+from skimage.transform import warp_polar
+from scipy.ndimage import label
+from scipy.interpolate import RegularGridInterpolator
+from scipy.constants import physical_constants, c
+from kkcalc import data
+from kkcalc import kk
 
 class GIWAXSDataProcessor:
     def __init__(self):
@@ -397,4 +399,50 @@ class GIWAXSDataProcessor:
         penetration_depth = wavelength * np.sqrt(2 / (np.sqrt(((alpha_i**2 - alpha_c**2))**2 + 4 * beta**2) - (alpha_i**2 - alpha_c**2))) / (4 * np.pi)        
         
         return penetration_depth
+    
+    def calc_refractive_index(self, xray_en, density, chemical_formula):
+        """
+        Calculates the real and imaginary portions of the complex refractive index based on the Henke Database of atomic scattering factors using kkcalc.
         
+        Parameters:
+        xray_en (float): Incident photon beam energy in keV.
+        density (float): Mass density in grams per mole.
+        chemical_formula (string): chemical formula representative of one mole, e.g., 'C10H14S' for a P3HT monomer
+
+        Returns:
+        tuple: a tuple containing the real and imaginary portions of the complex refractive indices, delta and beta, respectively.
+        """
+        xray_en *= 1000 # convert from keV to eV
+        stoichiometry = kk.data.ParseChemicalFormula(chemical_formula)
+        formula_mass = kk.data.calculate_FormulaMass(stoichiometry)
+
+        ASF_E, ASF_Data = kk.data.calculate_asf(stoichiometry)
+        imaginary = kk.data.coeffs_to_ASF(ASF_E, np.vstack((ASF_Data, ASF_Data[-1])))
+        
+        beta_cont = kk.data.convert_data(np.column_stack((ASF_E, imaginary)),'ASF','refractive_index', Density=density, Formula_Mass=formula_mass)
+        
+        merged = kk.data.merge_spectra(np.column_stack((ASF_E, imaginary)), ASF_E, ASF_Data, merge_points=(xray_en*0.9,xray_en*1.1), add_background=False, fix_distortions=False, plotting_extras=True)
+        
+        correction = kk.calc_relativistic_correction(stoichiometry)
+        
+        real = kk.KK_PP(merged[2][:,0], merged[0], merged[1], correction)
+        delta_cont = kk.data.convert_data(np.column_stack((merged[2][:,0], real)),'ASF','refractive_index', Density=density, Formula_Mass=formula_mass)
+        
+        beta = np.interp(xray_en, beta_cont[:, 0], beta_cont[:, 1])
+        delta = np.interp(xray_en, delta_cont[:, 0], delta_cont[:, 1])
+        
+        return delta, beta
+    
+    def calc_critical_angle(self, delta):
+        """
+        Calculates the critical angle (in degrees) using the real part of the refractive index.
+        
+        Parameters:
+        delta (float): Real part of the refractive index.
+
+        Returns:
+        alpha_c (float): The critical angle in degrees.
+        """
+        alpha_c = np.degrees(np.sqrt(2 * delta))
+        
+        return alpha_c
