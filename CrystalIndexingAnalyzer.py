@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Aug 26 13:18:14 2023
-
-@author: Phong
-"""
-
 from itertools import product
 from math import sqrt, pi, radians, sin, cos
 import numpy as np
