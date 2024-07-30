@@ -371,7 +371,7 @@ class GIWAXSDataProcessor:
     
         # Add axis labels
         ax.set_xlabel('$q$ (Å$^{-1}$)')
-        ax.set_ylabel('Azimuth, $\it{\chi}$')
+        ax.set_ylabel('Azimuth ($\it{\chi})$')
         ax.xaxis.set_tick_params(which='both', size=5, width=2, direction='in', top=True)
         ax.yaxis.set_tick_params(which='both', size=5, width=2, direction='in', right=True)
         ax.set_ylim([-90, 90])
