@@ -382,7 +382,7 @@ class Calculation:
     @staticmethod
     def calc_penetration_depth(xray_en, alpha_i, alpha_c, beta):
         """
-        Calculates the penetration depth of grazing incidence X-rays (< 1 degree).
+        Calculates the penetration depth of grazing incidence X-rays (< 1 degree) or non-grazing incidence (>= 1 degree).
         
         Parameters:
         xray_en (float): Incident photon beam energy in keV.
@@ -393,13 +393,22 @@ class Calculation:
         Returns:
         penetration depth (float): Depth where X-ray intensity is attenuated to 1/e (~37%) of incident intensity with units of angstrom.
         """
-        
         wavelength = physical_constants['Planck constant in eV s'][0] * c * 1e7 / xray_en  # Wavelength of the beam in angstrom
-        alpha_i = np.radians(alpha_i) # Convert from degrees to radians
-        alpha_c = np.radians(alpha_c) # Convert from degrees to radians
+        alpha_i_rad = np.radians(alpha_i)  # Convert from degrees to radians
+        alpha_c_rad = np.radians(alpha_c)  # Convert from degrees to radians
         
-        penetration_depth = wavelength * np.sqrt(2 / (np.sqrt(((alpha_i**2 - alpha_c**2))**2 + 4 * beta**2) - (alpha_i**2 - alpha_c**2))) / (4 * np.pi)        
-        
+        penetration_depth = np.zeros_like(alpha_i)
+    
+        conditions = (0 < alpha_i) & (alpha_i < 1)
+        penetration_depth[conditions] = wavelength * np.sqrt(2 / (np.sqrt(((alpha_i_rad[conditions]**2 - alpha_c_rad**2))**2 + 4 * beta**2) - (alpha_i_rad[conditions]**2 - alpha_c_rad**2))) / (4 * np.pi)
+    
+        conditions = (1 <= alpha_i) & (alpha_i <= 90)
+        penetration_depth[conditions] = 1 / ((4 * np.pi / wavelength) * beta) * np.cos(np.pi / 2 - alpha_i_rad[conditions])
+    
+        invalid_conditions = (np.degrees(alpha_i_rad) <= 0) | (np.degrees(alpha_i_rad) > 90)
+        if np.any(invalid_conditions):
+            raise ValueError('The incidence angle must be greater than 0 degrees and less than or equal to 90 degrees.')
+
         return penetration_depth
     
     @staticmethod
