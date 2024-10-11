@@ -43,11 +43,10 @@ class Reduction:
         # Adjust beam center to mm
         bc_x *= px_size_x
         bc_y = (det_image.shape[1] - bc_y) * px_size_y
-    
-        # Define the detector coordinate grids
-        x = np.linspace(-bc_x, (det_image.shape[0] * px_size_x - bc_x), det_image.shape[0])
-        y = np.linspace(-bc_y, (det_image.shape[1] * px_size_y - bc_y), det_image.shape[1])
-    
+
+        x = np.linspace(-bc_x, (det_image.shape[1] * px_size_x - bc_x), det_image.shape[1])
+        y = np.linspace(-bc_y, (det_image.shape[0] * px_size_y - bc_y), det_image.shape[0])
+ 
         # Define the q-space grid
         qxy_points = 2 * round(q_range / q_res)
         qz_points = round(q_range / q_res)
@@ -60,6 +59,7 @@ class Reduction:
     
         # Create an interpolator and interpolate using the original meshgrid
         interpolator = RegularGridInterpolator((y, x), det_image, bounds_error=False, fill_value=0)
+            
         detector_coords = np.stack([pz, px], axis=-1)
         q_image = interpolator(detector_coords)
     
