@@ -58,7 +58,7 @@ class Reduction:
         px, pz = self.q_to_image_mapping(Qxy, Qz, wavelength, R, incidence)
     
         # Create an interpolator and interpolate using the original meshgrid
-        interpolator = RegularGridInterpolator((y, x), det_image, bounds_error=False, fill_value=0)
+        interpolator = RegularGridInterpolator((y, x), det_image, bounds_error=False, fill_value=np.nan)
             
         detector_coords = np.stack([pz, px], axis=-1)
         q_image = interpolator(detector_coords)
@@ -138,9 +138,6 @@ class Reduction:
         qz = qzqxy.qz
         qxy = qzqxy.qxy
         
-        # Calculate q from qz and qxy, finding maximum radius
-        q = np.sqrt(qz**2 + qxy**2)
-        
         # Create a meshgrid from qz and qxy
         Qz, Qxy = np.meshgrid(qz, qxy, indexing='ij')
         
@@ -164,7 +161,7 @@ class Reduction:
         TwoD = warp_polar(data, output_shape=(360,1000), center=(center_y,center_x), radius = np.sqrt((data.shape[1] - center_x)**2 + (data.shape[0] - center_y)**2))
         TwoD = np.roll(TwoD, TwoD.shape[0]//4, axis=0)
         
-        chi = np.linspace(-180,180,360)
+        chi = np.linspace(180,-180,360)
         q = np.linspace(0,np.amax(q), 1000)
         
         # Create xarray with proper dimensions and coordinates
