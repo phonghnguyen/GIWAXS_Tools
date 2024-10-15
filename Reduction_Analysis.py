@@ -22,7 +22,7 @@ class Reduction:
     
     def img_to_qzqxy(self, det_image, bc_x, bc_y, R, incidence, px_size_x, px_size_y, q_range, q_res, xray_en):
         """
-        Converts a detector image into q-space coordinates using given parameters.
+        Converts a detector image into q-space coordinates using given parameters. Currently only supports mapping of the first quadrant of the detector (upper right of beam center)
 
         Parameters:
         det_image (2D array): The detector image as a 2D array.
@@ -48,9 +48,9 @@ class Reduction:
         y = np.linspace(-bc_y, (det_image.shape[0] * px_size_y - bc_y), det_image.shape[0])
  
         # Define the q-space grid
-        qxy_points = 2 * round(q_range / q_res)
+        qxy_points = round(q_range / q_res)
         qz_points = round(q_range / q_res)
-        qxy = np.linspace(-q_range, q_range, qxy_points)
+        qxy = np.linspace(0, q_range, qxy_points)
         qz = np.linspace(0, q_range, qz_points)
         Qxy, Qz = np.meshgrid(qxy, qz)
     
@@ -260,7 +260,7 @@ class Reduction:
             print(f"An error occurred: {e}")
             return None 
         
-    def plot_qzqxy(self, qzqxy, qxy_limits=(-2, 2), qz_limits=(0, 2), cmap='viridis', dpi=100):
+    def plot_qzqxy(self, qzqxy, qxy_limits=(0, 2), qz_limits=(0, 2), cmap='viridis', dpi=100):
         """
         Plots GIWAXS data from qzqxy coordinates with specified visual parameters.
 
@@ -374,7 +374,7 @@ class Reduction:
         ax.set_ylabel('Azimuth, $\it{\chi}$ (°)')
         ax.xaxis.set_tick_params(which='both', size=5, width=2, direction='in', top=True)
         ax.yaxis.set_tick_params(which='both', size=5, width=2, direction='in', right=True)
-        ax.set_ylim([-90, 90])
+        ax.set_ylim([0, 90])
     
         return fig, ax
 
