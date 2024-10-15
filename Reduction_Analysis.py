@@ -124,12 +124,13 @@ class Reduction:
         J_F = (wavelength**2 * R**2) / ((1 - (wavelength**2 * s**2) / 2)**3)
         return J_F
     
-    def cake_and_corr(self, qzqxy):
+    def cake_and_corr(self, qzqxy, tilt_offset = 0):
         """
         Applies polar transformation and sin(chi) correction to GIWAXS data represented in q-space.
 
         Parameters:
         qzqxy (xr.DataArray): GIWAXS data in q-space.
+        tilt_offset (float): Angle offset due to sample not being flat in the plane of the detector. Clockwise is positive.
 
         Returns:
         tuple: A tuple of DataArrays containing the raw and corrected polar transformation data.
@@ -161,7 +162,7 @@ class Reduction:
         TwoD = warp_polar(data, output_shape=(360,1000), center=(center_y,center_x), radius = np.sqrt((data.shape[1] - center_x)**2 + (data.shape[0] - center_y)**2))
         TwoD = np.roll(TwoD, TwoD.shape[0]//4, axis=0)
         
-        chi = np.linspace(180,-180,360)
+        chi = np.linspace(180 + tilt_offset,-180 + tilt_offset,360)
         q = np.linspace(0,np.amax(q), 1000)
         
         # Create xarray with proper dimensions and coordinates
