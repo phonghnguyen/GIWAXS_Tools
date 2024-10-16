@@ -22,7 +22,11 @@ class Reduction:
     
     def img_to_qzqxy(self, det_image, bc_x, bc_y, R, incidence, px_size_x, px_size_y, q_range, q_res, xray_en):
         """
-        Converts a detector image into q-space coordinates using given parameters. Currently only supports mapping of the first quadrant of the detector (upper right of beam center)
+        Converts a detector image into q-space coordinates using given parameters. 
+        
+        The current implementation maps both halves of the detector (using the beam center as reference),
+        onto a single quadrant, which enhances statistics when both halfs are available. 
+        The resulting detector image for subsequent processing is only populated on the right half.
 
         Parameters:
         det_image (2D array): The detector image as a 2D array.
@@ -38,8 +42,34 @@ class Reduction:
         """
         
         wavelength = physical_constants['Planck constant in eV s'][0] * c * 1e7 / xray_en  # Wavelength of the beam in angstrom
-        incidence = np.radians(incidence)  # Convert incidence angle to radians
+        incidence = np.radians(incidence)  # Convert incidence angle to radians from degrees
     
+        # Slicing the image into left and right halves
+        left_half = det_image[:, :int(bc_x)]
+        right_half = det_image[:, int(bc_x):]
+    
+        # Determine the shorter length
+        min_length = min(left_half.shape[1], right_half.shape[1])
+        
+        # Trim the longer half to match the shorter one
+        left_half_trimmed = left_half[:, :min_length]
+        right_half_trimmed = right_half[:, :min_length]
+        
+        # Normalize and combine the halves
+        normalized_image = (left_half_trimmed + right_half_trimmed[:, ::-1]) / 2
+            
+       # Incorporate remaining length
+        if left_half.shape[1] > min_length:
+            residual_length = left_half.shape[1] - min_length
+            residual_left_half = left_half[:, min_length:min_length + residual_length]
+            combined_image = np.hstack([residual_left_half, normalized_image])
+        elif right_half.shape[1] > min_length:
+            residual_length = right_half.shape[1] - min_length
+            residual_right_half = right_half[:, min_length:min_length + residual_length]
+            combined_image = np.hstack([normalized_image, residual_right_half])
+        else:
+            combined_image = normalized_image
+        
         # Adjust beam center to mm
         bc_x *= px_size_x
         bc_y = (det_image.shape[1] - bc_y) * px_size_y
@@ -365,7 +395,7 @@ class Reduction:
         fig, ax = plt.subplots(dpi=dpi)
     
         cax = chiq.plot(x='q', y='chi', cmap=cmap, ax=ax, add_colorbar=False, 
-                        norm=LogNorm(np.nanpercentile(chiq, 80), np.nanpercentile(chiq, 99)))
+                        norm=LogNorm(np.nanpercentile(chiq, 85), np.nanpercentile(chiq, 99)))
     
         # Add colorbar with custom label
         fig.colorbar(cax, ax=ax, label='Intensity (a.u.)', shrink=1)
