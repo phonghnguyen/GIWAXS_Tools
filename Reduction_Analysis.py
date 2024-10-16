@@ -19,6 +19,9 @@ class Reduction:
         """
         Initializes a data processor for Grazing-Incidence Wide-Angle X-ray Scattering (GIWAXS) images.
         """
+        
+    def q_to_2theta(self, wavelength, q):
+        return [np.degrees(2 * np.arcsin(wavelength * q_val / (4 * np.pi))) for q_val in q]
     
     def img_to_qzqxy(self, det_image, bc_x, bc_y, R, incidence, px_size_x, px_size_y, q_range, q_res, xray_en):
         """
@@ -99,8 +102,16 @@ class Reduction:
         jacobian = self.calculate_jacobian(Qxy, Qz, wavelength, R)
         q_image *= jacobian
         
-        qzqxy = xr.DataArray(q_image, dims=("qz", "qxy"), coords={"qxy":qxy, "qz":qz})
+        # Compute 2theta values
+        two_theta_qxy = self.q_to_2theta(wavelength, qxy)
+        two_theta_qz = self.q_to_2theta(wavelength, qz)
+        
+        qzqxy = xr.DataArray(q_image, dims=("qz", "qxy"), coords={"qxy": qxy, "qz": qz, "2theta_qxy": ("qxy", two_theta_qxy), "2theta_qz": ("qz", two_theta_qz)})
     
+        # Add attributes for xray_en and incidence
+        qzqxy.attrs['xray_en_keV'] = xray_en
+        qzqxy.attrs['incidence_degrees'] = np.degrees(incidence)
+        
         return qzqxy
     
     def q_to_image_mapping(self, q12, q3, wavelength, R, beta):
@@ -171,6 +182,9 @@ class Reduction:
         qz = qzqxy.qz
         qxy = qzqxy.qxy
         
+        xray_en = qzqxy.attrs['xray_en_keV']
+        incidence = qzqxy.attrs['incidence_degrees']
+        
         # Create a meshgrid from qz and qxy
         Qz, Qxy = np.meshgrid(qz, qxy, indexing='ij')
         
@@ -200,8 +214,18 @@ class Reduction:
         chi = np.linspace(-180 + tilt_offset,180 + tilt_offset,360)
         q = np.linspace(0,np.amax(q), 1000)
         
+        # Calculate 2theta values
+        wavelength = physical_constants['Planck constant in eV s'][0] * c * 1e7 / xray_en  # Wavelength in angstroms
+        two_theta = self.q_to_2theta(wavelength, q)
+    
         # Create xarray with proper dimensions and coordinates
-        chiq = xr.DataArray(TwoD, dims=("chi", "q"), coords={"chi": chi, "q": q})
+        chiq = xr.DataArray(TwoD, dims=("chi", "q"), coords={"chi": chi, "q": q, "2theta": ("q", two_theta)})
+        
+        # Add attributes for xray_en and incidence
+        chiq.attrs['xray_en'] = xray_en
+        chiq.attrs['incidence'] = incidence
+        
+        chiq = chiq.sel(chi=slice(0 + tilt_offset, 90 + tilt_offset))
 
         # Apply the sin(chi) correction
         corrected_chiq = self.sin_chi_correction(chiq)
@@ -397,14 +421,14 @@ class Reduction:
         fig, ax = plt.subplots(dpi=dpi)
     
         cax = chiq.plot(x='q', y='chi', cmap=cmap, ax=ax, add_colorbar=False, 
-                        norm=LogNorm(np.nanpercentile(chiq, 85), np.nanpercentile(chiq, 99)))
+                        norm=LogNorm(np.nanpercentile(chiq, 50), np.nanpercentile(chiq, 98)))
     
         # Add colorbar with custom label
         fig.colorbar(cax, ax=ax, label='Intensity (a.u.)', shrink=1)
     
         # Add axis labels
         ax.set_xlabel('$q$ (Å$^{-1}$)')
-        ax.set_ylabel('Azimuth, $\it{\chi}$ (°)')
+        ax.set_ylabel('Azimuth, $\it{\chi}$ ($^{\circ}$)')
         ax.xaxis.set_tick_params(which='both', size=5, width=2, direction='in', top=True)
         ax.yaxis.set_tick_params(which='both', size=5, width=2, direction='in', right=True)
         ax.set_ylim([0, 90])
