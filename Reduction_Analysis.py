@@ -48,21 +48,24 @@ class Reduction:
         left_half = det_image[:, :int(bc_x)]
         right_half = det_image[:, int(bc_x):]
     
+        # Mirror the left half to align with the right half
+        left_half_mirrored = left_half[:, ::-1]
+        
         # Determine the shorter length
-        min_length = min(left_half.shape[1], right_half.shape[1])
+        min_length = min(left_half_mirrored.shape[1], right_half.shape[1])
         
         # Trim the longer half to match the shorter one
-        left_half_trimmed = left_half[:, :min_length]
+        left_half_trimmed = left_half_mirrored[:, :min_length]
         right_half_trimmed = right_half[:, :min_length]
         
         # Normalize and combine the halves
-        normalized_image = (left_half_trimmed + right_half_trimmed[:, ::-1]) / 2
-            
-       # Incorporate remaining length
-        if left_half.shape[1] > min_length:
-            residual_length = left_half.shape[1] - min_length
-            residual_left_half = left_half[:, min_length:min_length + residual_length]
-            combined_image = np.hstack([residual_left_half, normalized_image])
+        normalized_image = (left_half_trimmed + right_half_trimmed) / 2
+        
+        # Incorporate remaining length
+        if left_half_mirrored.shape[1] > min_length:
+            residual_length = left_half_mirrored.shape[1] - min_length
+            residual_left_half = left_half_mirrored[:, min_length:min_length + residual_length]
+            combined_image = np.hstack([normalized_image, residual_left_half])
         elif right_half.shape[1] > min_length:
             residual_length = right_half.shape[1] - min_length
             residual_right_half = right_half[:, min_length:min_length + residual_length]
@@ -71,11 +74,10 @@ class Reduction:
             combined_image = normalized_image
         
         # Adjust beam center to mm
-        bc_x *= px_size_x
         bc_y = (det_image.shape[1] - bc_y) * px_size_y
 
-        x = np.linspace(-bc_x, (det_image.shape[1] * px_size_x - bc_x), det_image.shape[1])
-        y = np.linspace(-bc_y, (det_image.shape[0] * px_size_y - bc_y), det_image.shape[0])
+        x = np.linspace(0, (combined_image.shape[1] * px_size_x), combined_image.shape[1])
+        y = np.linspace(-bc_y, (combined_image.shape[0] * px_size_y - bc_y), combined_image.shape[0])
  
         # Define the q-space grid
         qxy_points = round(q_range / q_res)
@@ -88,7 +90,7 @@ class Reduction:
         px, pz = self.q_to_image_mapping(Qxy, Qz, wavelength, R, incidence)
     
         # Create an interpolator and interpolate using the original meshgrid
-        interpolator = RegularGridInterpolator((y, x), det_image, bounds_error=False, fill_value=np.nan)
+        interpolator = RegularGridInterpolator((y, x), combined_image, bounds_error=False, fill_value=np.nan)
             
         detector_coords = np.stack([pz, px], axis=-1)
         q_image = interpolator(detector_coords)
