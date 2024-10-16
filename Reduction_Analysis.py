@@ -162,7 +162,10 @@ class Reduction:
         TwoD = warp_polar(data, output_shape=(360,1000), center=(center_y,center_x), radius = np.sqrt((data.shape[1] - center_x)**2 + (data.shape[0] - center_y)**2))
         TwoD = np.roll(TwoD, TwoD.shape[0]//4, axis=0)
         
-        chi = np.linspace(180 + tilt_offset,-180 + tilt_offset,360)
+        # Flip the TwoD array to match the negative to positive chi indexing
+        TwoD = np.flipud(TwoD)
+        
+        chi = np.linspace(-180 + tilt_offset,180 + tilt_offset,360)
         q = np.linspace(0,np.amax(q), 1000)
         
         # Create xarray with proper dimensions and coordinates
