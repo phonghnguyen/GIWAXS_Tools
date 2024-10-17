@@ -28,9 +28,9 @@ class Reduction:
         Converts a detector image into q-space coordinates using given parameters. 
         
         The current implementation maps both halves of the detector (using the beam center as reference),
-        onto a single quadrant, which enhances statistics when both halfs are available. 
+        onto a single quadrant, which enhances statistics when both halves are available. 
         The resulting detector image for subsequent processing is only populated on the right half.
-
+    
         Parameters:
         det_image (2D array): The detector image as a 2D array.
         bc_x, bc_y (floats): Beam center coordinates in the detector image, given in pixels.
@@ -39,7 +39,7 @@ class Reduction:
         px_size_x, px_size_y (floats): Pixel sizes in the x and y directions in millimeters.
         q_range, q_res (floats): The range and resolution of the q-space grid, respectively.
         xray_en (float): Incident photon beam energy in keV.
-
+    
         Returns:
         xr.DataArray: Corrected image in q-space, represented as an xarray DataArray.
         """
@@ -53,7 +53,7 @@ class Reduction:
     
         # Mirror the left half to align with the right half
         left_half_mirrored = left_half[:, ::-1]
-        
+       
         # Determine the shorter length
         min_length = min(left_half_mirrored.shape[1], right_half.shape[1])
         
@@ -61,10 +61,27 @@ class Reduction:
         left_half_trimmed = left_half_mirrored[:, :min_length]
         right_half_trimmed = right_half[:, :min_length]
         
-        # Normalize and combine the halves
-        normalized_image = (left_half_trimmed + right_half_trimmed) / 2
+        # Convert NaNs to masks
+        left_mask = np.isnan(left_half_trimmed)
+        right_mask = np.isnan(right_half_trimmed)
         
-        # Incorporate remaining length
+        # Combine masks to identify regions where both halves are NaN
+        combined_mask = np.logical_and(left_mask, right_mask)
+        
+        # Prepare an array for the combined image of the trimmed regions
+        normalized_image = np.empty_like(left_half_trimmed)
+        
+        # Combine non-NaN regions from both halves
+        # For regions where at least one half is not NaN, compute the average
+        # Replace NaNs with 0 for summation, and divide by the valid count
+        normalized_image[:, :min_length] = np.where(
+            ~combined_mask[:, :min_length],  # Condition: where at least one half is not NaN
+            (np.where(left_mask[:, :min_length], 0, left_half_trimmed) + np.where(right_mask[:, :min_length], 0, right_half_trimmed)) / 
+            (2 - left_mask[:, :min_length].astype(int) - right_mask[:, :min_length].astype(int)),  # Correct average based on valid counts
+            np.nan  # Assign NaN where both halves are NaN
+        )
+        
+        # Incorporate remaining length by appending the residual non-trimmed part of the longer half
         if left_half_mirrored.shape[1] > min_length:
             residual_length = left_half_mirrored.shape[1] - min_length
             residual_left_half = left_half_mirrored[:, min_length:min_length + residual_length]
@@ -78,10 +95,10 @@ class Reduction:
         
         # Adjust beam center to mm
         bc_y = (det_image.shape[1] - bc_y) * px_size_y
-
+    
         x = np.linspace(0, (combined_image.shape[1] * px_size_x), combined_image.shape[1])
         y = np.linspace(-bc_y, (combined_image.shape[0] * px_size_y - bc_y), combined_image.shape[0])
- 
+    
         # Define the q-space grid
         qxy_points = round(q_range / q_res)
         qz_points = round(q_range / q_res)
