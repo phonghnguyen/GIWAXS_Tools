@@ -4,12 +4,12 @@ import numpy as np
 import pandas as pd
 
 class Indexing:
-    def __init__(self, space_group, a, b, c, alpha, beta, gamma):
+    def __init__(self, lattice_system, a, b, c, alpha, beta, gamma):
         """
         Initializes an analyzer for indexing crystal structures using specified lattice parameters.
         
         Parameters:
-        space_group (str): The crystallographic space group.
+        lattice_system (str): The crystallographic lattice system.
         a (float): Lattice constant a in Ångströms.
         b (float): Lattice constant b in Ångströms.
         c (float): Lattice constant c in Ångströms.
@@ -17,7 +17,7 @@ class Indexing:
         beta (float): Beta lattice angle in degrees.
         gamma (float): Gamma lattice angle in degrees.
         """
-        self.space_group = space_group.lower()
+        self.lattice_system = lattice_system.lower()
         self.a = a
         self.b = b
         self.c = c
@@ -84,25 +84,25 @@ class Indexing:
         Returns:
         float: The calculated d-spacing in Ångströms.
         """
-        space_group = self.space_group.lower()
+        lattice_system = self.lattice_system.lower()
     
-        if space_group == 'cubic':
+        if lattice_system == 'cubic':
             d = self.a / sqrt(h**2 + k**2 + l**2)
-        elif space_group == 'hexagonal':
+        elif lattice_system == 'hexagonal':
             d = sqrt(1 / ((4/3 * (h**2 + h*k + k**2) / self.a**2) + (l**2 / self.c**2)))
-        elif space_group == 'monoclinic':
+        elif lattice_system == 'monoclinic':
             d = sqrt(1 / ((h**2 / self.a**2) + (k**2 * sin(radians(self.beta))**2 / self.b**2) + (l**2 / self.c**2) - (2 * h * l * cos(radians(self.beta)) / self.a * self.c)) / sin(radians(self.beta))**2)
-        elif space_group == 'rhombohedral':
+        elif lattice_system == 'rhombohedral':
             d = sqrt(1 / (((h**2 + k**2 + l**2) * sin(radians(self.alpha))**2) + ((h*k + k*l + h*l) * 2 * cos(radians(self.alpha))**2) - cos(radians(self.alpha)) / self.a**2 * (1 - 3 * cos(radians(self.alpha))**2 + 2 * cos(radians(self.alpha))**3)))
-        elif space_group == 'tetragonal':
+        elif lattice_system == 'tetragonal':
             d = sqrt(1 / ((h**2 + k**2) / self.a**2 + l**2 / self.c**2))
-        elif space_group == 'triclinic':
+        elif lattice_system == 'triclinic':
             V = self.a * self.b * self.c * sqrt(1 - cos(radians(self.alpha))**2 - cos(radians(self.beta))**2 - cos(radians(self.gamma))**2 + 2 * cos(radians(self.alpha)) * cos(radians(self.beta)) * cos(radians(self.gamma)))
             d = sqrt(1 / ((self.b**2 * self.c**2 * sin(radians(self.alpha))**2 * h**2) + (self.a**2 * self.c**2 * sin(radians(self.beta))**2 * k**2) + (self.a**2 * self.b**2 * sin(radians(self.gamma))**2 * l**2) + (2 * self.a * self.b * self.c**2 * (cos(radians(self.alpha)) * cos(radians(self.beta)) - cos(radians(self.gamma))) * h * k) + (2 * self.b * self.c * self.a**2 * (cos(radians(self.gamma)) * cos(radians(self.beta)) - cos(radians(self.alpha))) * l * k) + (2 * self.a * self.c * self.b**2 * (cos(radians(self.alpha)) * cos(radians(self.gamma)) - cos(radians(self.beta))) * h * l)) / V**2)
-        elif space_group == 'orthorhombic':
+        elif lattice_system == 'orthorhombic':
             d = sqrt(1 / ((h**2 / self.a**2) + (k**2 / self.b**2) + (l**2 / self.c**2)))
         else:
-            raise ValueError("Invalid space group. Accepted values: cubic, hexagonal, monoclinic, rhombohedral, tetragonal, triclinic, orthorhombic")
+            raise ValueError("Invalid lattice system. Accepted values: cubic, hexagonal, monoclinic, rhombohedral, tetragonal, triclinic, orthorhombic")
         return d
     
     def compute_interplanar_angle(self, h1, k1, l1, h2, k2, l2):
