@@ -19,11 +19,18 @@ class Reduction:
         """
         Initializes a data processor for Grazing-Incidence Wide-Angle X-ray Scattering (GIWAXS) images.
         """
+        
+    def q_to_2theta(self, wavelength, q):
+        return [np.degrees(2 * np.arcsin(wavelength * q_val / (4 * np.pi))) for q_val in q]
     
     def img_to_qzqxy(self, det_image, bc_x, bc_y, R, incidence, px_size_x, px_size_y, q_range, q_res, xray_en):
         """
-        Converts a detector image into q-space coordinates using given parameters.
-
+        Converts a detector image into q-space coordinates using given parameters. 
+        
+        The current implementation maps both halves of the detector (using the beam center as reference),
+        onto a single quadrant, which enhances statistics when both halves are available. 
+        The resulting detector image for subsequent processing is only populated on the right half.
+    
         Parameters:
         det_image (2D array): The detector image as a 2D array.
         bc_x, bc_y (floats): Beam center coordinates in the detector image, given in pixels.
@@ -32,26 +39,70 @@ class Reduction:
         px_size_x, px_size_y (floats): Pixel sizes in the x and y directions in millimeters.
         q_range, q_res (floats): The range and resolution of the q-space grid, respectively.
         xray_en (float): Incident photon beam energy in keV.
-
+    
         Returns:
         xr.DataArray: Corrected image in q-space, represented as an xarray DataArray.
         """
         
         wavelength = physical_constants['Planck constant in eV s'][0] * c * 1e7 / xray_en  # Wavelength of the beam in angstrom
-        incidence = np.radians(incidence)  # Convert incidence angle to radians
+        incidence = np.radians(incidence)  # Convert incidence angle to radians from degrees
     
+        # Slicing the image into left and right halves
+        left_half = det_image[:, :int(bc_x)]
+        right_half = det_image[:, int(bc_x):]
+    
+        # Mirror the left half to align with the right half
+        left_half_mirrored = left_half[:, ::-1]
+       
+        # Determine the shorter length
+        min_length = min(left_half_mirrored.shape[1], right_half.shape[1])
+        
+        # Trim the longer half to match the shorter one
+        left_half_trimmed = left_half_mirrored[:, :min_length]
+        right_half_trimmed = right_half[:, :min_length]
+        
+        # Convert NaNs to masks
+        left_mask = np.isnan(left_half_trimmed)
+        right_mask = np.isnan(right_half_trimmed)
+        
+        # Combine masks to identify regions where both halves are NaN
+        combined_mask = np.logical_and(left_mask, right_mask)
+        
+        # Prepare an array for the combined image of the trimmed regions
+        normalized_image = np.empty_like(left_half_trimmed)
+        
+        # Combine non-NaN regions from both halves
+        # For regions where at least one half is not NaN, compute the average
+        # Replace NaNs with 0 for summation, and divide by the valid count
+        normalized_image[:, :min_length] = np.where(
+            ~combined_mask[:, :min_length],  # Condition: where at least one half is not NaN
+            (np.where(left_mask[:, :min_length], 0, left_half_trimmed) + np.where(right_mask[:, :min_length], 0, right_half_trimmed)) / 
+            (2 - left_mask[:, :min_length].astype(int) - right_mask[:, :min_length].astype(int)),  # Correct average based on valid counts
+            np.nan  # Assign NaN where both halves are NaN
+        )
+        
+        # Incorporate remaining length by appending the residual non-trimmed part of the longer half
+        if left_half_mirrored.shape[1] > min_length:
+            residual_length = left_half_mirrored.shape[1] - min_length
+            residual_left_half = left_half_mirrored[:, min_length:min_length + residual_length]
+            combined_image = np.hstack([normalized_image, residual_left_half])
+        elif right_half.shape[1] > min_length:
+            residual_length = right_half.shape[1] - min_length
+            residual_right_half = right_half[:, min_length:min_length + residual_length]
+            combined_image = np.hstack([normalized_image, residual_right_half])
+        else:
+            combined_image = normalized_image
+        
         # Adjust beam center to mm
-        bc_x *= px_size_x
         bc_y = (det_image.shape[1] - bc_y) * px_size_y
     
-        # Define the detector coordinate grids
-        x = np.linspace(-bc_x, (det_image.shape[0] * px_size_x - bc_x), det_image.shape[0])
-        y = np.linspace(-bc_y, (det_image.shape[1] * px_size_y - bc_y), det_image.shape[1])
+        x = np.linspace(0, (combined_image.shape[1] * px_size_x), combined_image.shape[1])
+        y = np.linspace(-bc_y, (combined_image.shape[0] * px_size_y - bc_y), combined_image.shape[0])
     
         # Define the q-space grid
-        qxy_points = 2 * round(q_range / q_res)
+        qxy_points = round(q_range / q_res)
         qz_points = round(q_range / q_res)
-        qxy = np.linspace(-q_range, q_range, qxy_points)
+        qxy = np.linspace(0, q_range, qxy_points)
         qz = np.linspace(0, q_range, qz_points)
         Qxy, Qz = np.meshgrid(qxy, qz)
     
@@ -59,7 +110,8 @@ class Reduction:
         px, pz = self.q_to_image_mapping(Qxy, Qz, wavelength, R, incidence)
     
         # Create an interpolator and interpolate using the original meshgrid
-        interpolator = RegularGridInterpolator((y, x), det_image, bounds_error=False, fill_value=0)
+        interpolator = RegularGridInterpolator((y, x), combined_image, bounds_error=False, fill_value=np.nan)
+            
         detector_coords = np.stack([pz, px], axis=-1)
         q_image = interpolator(detector_coords)
     
@@ -67,8 +119,16 @@ class Reduction:
         jacobian = self.calculate_jacobian(Qxy, Qz, wavelength, R)
         q_image *= jacobian
         
-        qzqxy = xr.DataArray(q_image, dims=("qz", "qxy"), coords={"qxy":qxy, "qz":qz})
+        # Compute 2theta values
+        two_theta_qxy = self.q_to_2theta(wavelength, qxy)
+        two_theta_qz = self.q_to_2theta(wavelength, qz)
+        
+        qzqxy = xr.DataArray(q_image, dims=("qz", "qxy"), coords={"qxy": qxy, "qz": qz, "2theta_qxy": ("qxy", two_theta_qxy), "2theta_qz": ("qz", two_theta_qz)})
     
+        # Add attributes for xray_en and incidence
+        qzqxy.attrs['xray_en_keV'] = xray_en
+        qzqxy.attrs['incidence_degrees'] = np.degrees(incidence)
+        
         return qzqxy
     
     def q_to_image_mapping(self, q12, q3, wavelength, R, beta):
@@ -124,12 +184,13 @@ class Reduction:
         J_F = (wavelength**2 * R**2) / ((1 - (wavelength**2 * s**2) / 2)**3)
         return J_F
     
-    def cake_and_corr(self, qzqxy):
+    def cake_and_corr(self, qzqxy, tilt_offset = 0):
         """
         Applies polar transformation and sin(chi) correction to GIWAXS data represented in q-space.
 
         Parameters:
         qzqxy (xr.DataArray): GIWAXS data in q-space.
+        tilt_offset (float): Angle offset due to sample not being flat in the plane of the detector. Clockwise is positive.
 
         Returns:
         tuple: A tuple of DataArrays containing the raw and corrected polar transformation data.
@@ -138,8 +199,8 @@ class Reduction:
         qz = qzqxy.qz
         qxy = qzqxy.qxy
         
-        # Calculate q from qz and qxy, finding maximum radius
-        q = np.sqrt(qz**2 + qxy**2)
+        xray_en = qzqxy.attrs['xray_en_keV']
+        incidence = qzqxy.attrs['incidence_degrees']
         
         # Create a meshgrid from qz and qxy
         Qz, Qxy = np.meshgrid(qz, qxy, indexing='ij')
@@ -164,11 +225,24 @@ class Reduction:
         TwoD = warp_polar(data, output_shape=(360,1000), center=(center_y,center_x), radius = np.sqrt((data.shape[1] - center_x)**2 + (data.shape[0] - center_y)**2))
         TwoD = np.roll(TwoD, TwoD.shape[0]//4, axis=0)
         
-        chi = np.linspace(-180,180,360)
+        # Flip the TwoD array to match the negative to positive chi indexing
+        TwoD = np.flipud(TwoD)
+        
+        chi = np.linspace(-180 + tilt_offset,180 + tilt_offset,360)
         q = np.linspace(0,np.amax(q), 1000)
         
+        # Calculate 2theta values
+        wavelength = physical_constants['Planck constant in eV s'][0] * c * 1e7 / xray_en  # Wavelength in angstroms
+        two_theta = self.q_to_2theta(wavelength, q)
+    
         # Create xarray with proper dimensions and coordinates
-        chiq = xr.DataArray(TwoD, dims=("chi", "q"), coords={"chi": chi, "q": q})
+        chiq = xr.DataArray(TwoD, dims=("chi", "q"), coords={"chi": chi, "q": q, "2theta": ("q", two_theta)})
+        
+        # Add attributes for xray_en and incidence
+        chiq.attrs['xray_en'] = xray_en
+        chiq.attrs['incidence'] = incidence
+        
+        chiq = chiq.sel(chi=slice(0 + tilt_offset, 90 + tilt_offset))
 
         # Apply the sin(chi) correction
         corrected_chiq = self.sin_chi_correction(chiq)
@@ -260,7 +334,7 @@ class Reduction:
             print(f"An error occurred: {e}")
             return None 
         
-    def plot_qzqxy(self, qzqxy, qxy_limits=(-2, 2), qz_limits=(0, 2), cmap='viridis', dpi=100):
+    def plot_qzqxy(self, qzqxy, qxy_limits=(0, 2), qz_limits=(0, 2), cmap='viridis', dpi=100):
         """
         Plots GIWAXS data from qzqxy coordinates with specified visual parameters.
 
@@ -364,17 +438,17 @@ class Reduction:
         fig, ax = plt.subplots(dpi=dpi)
     
         cax = chiq.plot(x='q', y='chi', cmap=cmap, ax=ax, add_colorbar=False, 
-                        norm=LogNorm(np.nanpercentile(chiq, 80), np.nanpercentile(chiq, 99)))
+                        norm=LogNorm(np.nanpercentile(chiq, 50), np.nanpercentile(chiq, 98)))
     
         # Add colorbar with custom label
         fig.colorbar(cax, ax=ax, label='Intensity (a.u.)', shrink=1)
     
         # Add axis labels
         ax.set_xlabel('$q$ (Å$^{-1}$)')
-        ax.set_ylabel('Azimuth, $\it{\chi}$ (°)')
+        ax.set_ylabel('Azimuth, $\it{\chi}$ ($^{\circ}$)')
         ax.xaxis.set_tick_params(which='both', size=5, width=2, direction='in', top=True)
         ax.yaxis.set_tick_params(which='both', size=5, width=2, direction='in', right=True)
-        ax.set_ylim([-90, 90])
+        ax.set_ylim([0, 90])
     
         return fig, ax
 
@@ -382,7 +456,7 @@ class Calculation:
     @staticmethod
     def calc_penetration_depth(xray_en, alpha_i, alpha_c, beta):
         """
-        Calculates the penetration depth of grazing incidence X-rays (< 1 degree).
+        Calculates the penetration depth of grazing incidence X-rays (< 1 degree) or non-grazing incidence (>= 1 degree).
         
         Parameters:
         xray_en (float): Incident photon beam energy in keV.
@@ -393,13 +467,22 @@ class Calculation:
         Returns:
         penetration depth (float): Depth where X-ray intensity is attenuated to 1/e (~37%) of incident intensity with units of angstrom.
         """
-        
         wavelength = physical_constants['Planck constant in eV s'][0] * c * 1e7 / xray_en  # Wavelength of the beam in angstrom
-        alpha_i = np.radians(alpha_i) # Convert from degrees to radians
-        alpha_c = np.radians(alpha_c) # Convert from degrees to radians
+        alpha_i_rad = np.radians(alpha_i)  # Convert from degrees to radians
+        alpha_c_rad = np.radians(alpha_c)  # Convert from degrees to radians
         
-        penetration_depth = wavelength * np.sqrt(2 / (np.sqrt(((alpha_i**2 - alpha_c**2))**2 + 4 * beta**2) - (alpha_i**2 - alpha_c**2))) / (4 * np.pi)        
-        
+        penetration_depth = np.zeros_like(alpha_i)
+    
+        conditions = (0 < alpha_i) & (alpha_i < 1)
+        penetration_depth[conditions] = wavelength * np.sqrt(2 / (np.sqrt(((alpha_i_rad[conditions]**2 - alpha_c_rad**2))**2 + 4 * beta**2) - (alpha_i_rad[conditions]**2 - alpha_c_rad**2))) / (4 * np.pi)
+    
+        conditions = (1 <= alpha_i) & (alpha_i <= 90)
+        penetration_depth[conditions] = 1 / ((4 * np.pi / wavelength) * beta) * np.cos(np.pi / 2 - alpha_i_rad[conditions])
+    
+        invalid_conditions = (np.degrees(alpha_i_rad) <= 0) | (np.degrees(alpha_i_rad) > 90)
+        if np.any(invalid_conditions):
+            raise ValueError('The incidence angle must be greater than 0 degrees and less than or equal to 90 degrees.')
+
         return penetration_depth
     
     @staticmethod
